@@ -1,0 +1,128 @@
+#property copyright "Copyright 2025, MetaQuotes Ltd."
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+
+#include <Trade\Trade.mqh>
+CTrade trade;
+
+#include <Martingale/ForSell.mqh>
+#include <Martingale/ForBuy.mqh>
+
+double my_gap_sell = 1.5;
+double my_gap_buy = 2.5;
+double my_profit_sell = 2.6;
+double my_profit_buy = 5;
+double tp_price_sell = 0;
+double tp_price_buy = 0;
+
+int OnInit()
+{
+   Print("EA-Buy-Martingale-V2: Started .... ");
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   Print("EA-Buy-Martingale-V2: Closeed .... ");
+}
+
+void OnTick()
+{
+    //RunEA_sell();
+    RunEA_buy();
+}
+
+
+void RunEA_sell()
+{
+   string symbol = _Symbol;
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   SellInfo sell = GetSellInfo();
+   
+   if (sell.max_price != -1){
+      double target_sell_limit = 9000;
+      double max_lot_size1 = sell.max_lot_size1;
+      double max_lot_size2 = sell.max_lot_size2;
+      if(max_lot_size1==0.01){
+         max_lot_size2=0.01;
+      }
+      double new_lot_size = max_lot_size1+max_lot_size2;
+      
+      target_sell_limit = sell.max_price + my_gap_sell;
+
+      if(target_sell_limit != sell.sell_limit_price && target_sell_limit >= sell.sell_limit_price+0.1){ // no sell limit at price
+
+         if(new_lot_size < 200){
+            trade.SellLimit(new_lot_size, target_sell_limit, symbol, 0, 0, NULL);
+            Print("New Sell limit", new_lot_size ," lot ",target_sell_limit);
+         }
+         if(max_lot_size1 < 200){
+            if(sell.count > 1){
+               tp_price_sell = sell.max_price - my_profit_sell;
+               ModifySellTP(symbol, tp_price_sell);
+            }
+            
+         }
+      }
+      
+      
+   }else{
+      if(sell.sell_limit_price!=-1){
+         DeleteAllSellLimit(symbol);
+      }
+      
+      
+      trade.Sell(0.01, symbol, bid, 0, bid - 2);
+   }
+   
+}
+
+
+void RunEA_buy()
+{
+   string symbol = _Symbol;
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   BuyInfo buy = GetBuyInfo();
+   
+   if (buy.min_price != 9999){
+      double target_buy_limit = 0;
+      double max_lot_size1 = buy.max_lot_size1;
+      double max_lot_size2 = buy.max_lot_size2;
+      if(max_lot_size1==0.01){
+         max_lot_size2=0.01;
+      }
+      double new_lot_size = max_lot_size1+max_lot_size2;
+      
+      target_buy_limit = buy.min_price - my_gap_buy;
+      
+
+      if(target_buy_limit != buy.buy_limit_price && target_buy_limit <= buy.buy_limit_price-0.1){ // no buy limit at price
+
+         if(new_lot_size < 200){
+            trade.BuyLimit(new_lot_size, target_buy_limit, symbol, 0, 0, NULL);
+            Print("New Buy limit", new_lot_size ," lot ",target_buy_limit);
+         }
+         if(max_lot_size1 < 200){
+            if(buy.count > 1){
+               tp_price_buy = buy.min_price + my_profit_buy;
+               ModifyBuyTP(symbol, tp_price_buy);
+            }
+            
+         }
+      }
+      
+   }else{
+      if(buy.buy_limit_price!=9999){
+         DeleteAllBuyLimit(symbol);
+      }
+      
+
+      trade.Buy(0.01, symbol, ask, 0, ask + 3);
+      Print("Buy now: ",ask);
+   }
+   
+}
