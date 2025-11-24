@@ -1,0 +1,152 @@
+#property copyright "Copyright 2025, MetaQuotes Ltd."
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+
+#include <Trade\Trade.mqh>
+CTrade trade;
+
+#include <FunctionForBuy.mqh>
+#include <FunctionForSell.mqh>
+
+// ---- for buy ---- //
+double my_profit_buy = 5;
+double my_gap_buy = 2.5;
+double lot_size = 0.07;
+
+// ---- for sell ---- //
+int order_sell_count = 0;
+double my_profit_sell = 3.4;
+double my_gap_sell = 2.5;
+double tp_price = 0;
+
+bool update_status = true;
+
+int OnInit()
+{
+   Print("EA-Buy-And-Sell: Started .... ");
+   //--- create timer
+   //EventSetTimer(10);
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   Print("EA-Buy-And-Sell: Closeed .... ");
+   //--- destroy timer
+   //EventKillTimer();
+}
+
+void OnTick()
+{
+    RunEA_buy();
+    RunEA_sell();
+}
+
+
+void RunEA_buy()
+{
+      string symbol = _Symbol;
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double minBuyPrice = GetSmallestBuyPrice();
+      double maxBuyPrice = GetHighestBuyPrice();
+      
+      if (minBuyPrice != -1){
+         //--- buy limit -----
+         if (HasBuyLimitOrder(_Symbol)){
+            double maxBuyLimitPrice = GetHighestBuyLimitPrice(symbol);
+            double target = maxBuyLimitPrice + my_gap_buy;
+            if( minBuyPrice - target > 1  && !HasBuyLimitAtPrice(target) ){
+               trade.BuyLimit(lot_size, target, symbol, 0, target + my_profit_buy, NULL);
+               Print("New Buy Limit ---->: ", target);
+            }
+         }else{
+            // ??????????? buy limit
+            double target = 4000;
+            trade.BuyLimit(lot_size, target, symbol, 0, target+my_profit_buy, NULL);
+            Print("New Buy Limit ---->: ", target);
+         }
+         
+         //--------buy stop--------------------
+         if(HasBuyStopOrder(_Symbol)){
+            double minBuyStopPrice = GetLowestBuyStopPrice(symbol);
+            double target = minBuyStopPrice - my_gap_buy;
+            if( target > maxBuyPrice+1 && !HasBuyStopAtPrice(target) ){
+               trade.BuyStop(lot_size, target, symbol, 0, target + my_profit_buy, NULL);
+               Print("New Buy Stop ---->: ", target);
+            }
+         }else{
+            ////  buy stop
+            double target = 4400;
+            trade.BuyStop(lot_size, target, symbol, 0, target+my_profit_buy, NULL);
+            Print("New Buy Stop ---->: ", target);
+         }
+
+      }
+      else{
+         
+         Print("No Order Buy , Buy Now---->: ", ask);
+         trade.Buy(lot_size, symbol, ask, 0, ask+my_profit_buy);
+
+      }
+}
+
+void RunEA_sell()
+{
+   string symbol = _Symbol;
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   SellInfo sell = GetSellInfo();
+   
+   if (sell.max_price != -1){
+      double target_sell_limit = sell.max_price + my_gap_sell;
+      if(target_sell_limit != sell.sell_limit_price && target_sell_limit >= sell.sell_limit_price+0.1){ // no sell limit at price
+         double now_lot_size = sell.max_lot_size;
+         double new_lot_size = sell.max_lot_size*2;
+         if(new_lot_size < 200){
+            trade.SellLimit(sell.max_lot_size*2, target_sell_limit, symbol, 0, 0, NULL);
+            Print("New Sell limit", sell.max_lot_size*2 ," lot ",target_sell_limit);
+         }
+         if(now_lot_size < 200){
+            if(sell.count > 1){
+               if(now_lot_size < 1.28){
+                  tp_price = sell.max_price - 4;
+               }else{
+                  tp_price = sell.max_price - my_profit_sell;
+               }
+               update_status = ModifySellTP(symbol, tp_price);
+            }
+            
+         }
+         
+         
+      }
+      
+      if(update_status == false){
+         Print("-------------update_status: false---------------------");
+         update_status = ModifySellTP(symbol, tp_price);
+      }
+      
+   }else{
+      if(sell.sell_limit_price!=-1){
+         DeleteAllSellLimit(symbol);
+      }
+      order_sell_count = 0;
+      
+      
+      trade.Sell(0.02, symbol, bid, 0, bid - 2);
+   }
+   
+}
+
+
+void OnTimer()
+{
+   Print("OnTimer--------------");
+   SellInfo sell = GetSellInfo();
+   Print("count: ",sell.count);
+   Print("max_price: ",sell.max_price);
+   Print("max_lot_size: ",sell.max_lot_size);
+   Print("sell_limit_price: ",sell.sell_limit_price);
+
+}
