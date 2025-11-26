@@ -1,0 +1,202 @@
+
+#property copyright "Copyright 2025, MetaQuotes Ltd."
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+
+#include <Trade\Trade.mqh>
+CTrade trade;
+//+------------------------------------------------------------------+
+//| ລົງ1ຊື້.ບວກ1ເກັບ                               |
+//+------------------------------------------------------------------+
+double my_profit = 5;
+double my_gap = 2.5;
+int OnInit()
+ {
+   Print("EA-buy-V1: Started .... ");
+   return(INIT_SUCCEEDED);
+ }
+  
+void OnDeinit(const int reason)
+ {
+   Print("EA-buy-V1: Closeed .... ");
+ }
+  
+void OnTick()
+ {
+      string symbol = _Symbol;
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      
+      double minBuyPrice = GetSmallestBuyPrice();
+      double maxBuyPrice = GetHighestBuyPrice();
+      
+      if (minBuyPrice != -1){
+         double targetPrice = minBuyPrice - my_gap;
+
+         if (HasBuyLimitOrder(_Symbol)){
+            double maxBuyLimitPrice = GetHighestBuyLimitPrice(symbol);
+            if( maxBuyLimitPrice < targetPrice ){
+               ModifyBuyLimitPrice(_Symbol, maxBuyLimitPrice, targetPrice, targetPrice+my_profit);
+            }
+         }else{
+            double take_profit = targetPrice + my_profit;
+            trade.BuyLimit(0.02, targetPrice, symbol, 0, take_profit, NULL);
+            Print("New Buy Limit ---->: ", targetPrice);
+         }
+
+      }
+      else{
+         Print("No Order Buy , Buy Now---->: ", ask);
+         trade.Buy(0.02, symbol, ask, 0, ask+my_profit);
+      }
+      
+      if(HasBuyStopOrder(symbol)){
+      
+      }else{
+         double target_stop = maxBuyPrice + my_gap;
+         trade.BuyStop(0.02, target_stop, symbol, 0, target_stop+my_profit, NULL);
+         Print("New Buy Stop: ==> ",target_stop);
+      }
+   
+ }
+//+------------------------------------------------------------------+
+
+double GetSmallestBuyPrice()
+{
+   double min_price = DBL_MAX;  // Start with max possible value
+   int total = PositionsTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (PositionGetTicket(i))
+      {
+         int type = (int)PositionGetInteger(POSITION_TYPE);
+         if (type == POSITION_TYPE_BUY)
+         {
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            if (price < min_price)
+               min_price = price;
+         }
+      }
+   }
+
+   // If no buy positions found, return -1 or handle accordingly
+   return (min_price == DBL_MAX) ? -1 : min_price;
+}
+
+bool HasBuyLimitOrder(string symbol)
+{
+   int total = OrdersTotal();
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         if (OrderGetString(ORDER_SYMBOL) == symbol &&
+             (int)OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_LIMIT)
+         {
+            return true;
+         }
+      }
+   }
+   return false;
+}
+
+double GetHighestBuyLimitPrice(string symbol)
+{
+   double highest_price = -1;
+   int total = OrdersTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         int type = (int)OrderGetInteger(ORDER_TYPE);
+         string order_symbol = OrderGetString(ORDER_SYMBOL);
+         double price = OrderGetDouble(ORDER_PRICE_OPEN);
+
+         if (type == ORDER_TYPE_BUY_LIMIT && order_symbol == symbol)
+         {
+            if (price > highest_price)
+               highest_price = price;
+         }
+      }
+   }
+
+   return highest_price;
+}
+
+
+void ModifyBuyLimitPrice(string symbol, double old_price, double new_price, double new_tp)
+{
+   int total = OrdersTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         int type = (int)OrderGetInteger(ORDER_TYPE);
+         string order_symbol = OrderGetString(ORDER_SYMBOL);
+         double price = OrderGetDouble(ORDER_PRICE_OPEN);
+         ulong ticket = OrderGetInteger(ORDER_TICKET);
+         double sl = 0; // No Stop Loss
+         double tp = new_tp;
+
+         // Match Buy Limit at old_price
+         if (type == ORDER_TYPE_BUY_LIMIT &&
+             order_symbol == symbol &&
+             NormalizeDouble(price, _Digits) == NormalizeDouble(old_price, _Digits))
+         {
+            new_price = NormalizeDouble(new_price, _Digits);
+            tp = NormalizeDouble(new_tp, _Digits);
+
+            // Modify the Buy Limit order
+            if (trade.OrderModify(ticket, new_price, sl, tp, ORDER_TIME_GTC,0, 0.01))
+               Print("Successfully modified Buy Limit order ", ticket, " from ", old_price, " to ", new_price, " with TP: ", new_tp);
+            else
+               Print("Failed to modify order: ", trade.ResultRetcode(), " - ", trade.ResultRetcodeDescription());
+
+            return; // Only modify the first matching order
+         }
+      }
+   }
+
+   Print("No Buy Limit order found at price ", old_price);
+}
+// --- for buy stop -------
+//--- ------------- for Buy Stop --------------------------
+bool HasBuyStopOrder(string symbol)
+{
+   int total = OrdersTotal();
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         if (OrderGetString(ORDER_SYMBOL) == symbol &&
+             (int)OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP)
+         {
+            return true;
+         }
+      }
+   }
+   return false;
+}
+double GetHighestBuyPrice()
+{
+   double max_price = -1;
+   int total = PositionsTotal();
+
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket > 0 && PositionSelectByTicket(ticket))
+      {
+         int type = (int)PositionGetInteger(POSITION_TYPE);
+         if(type == POSITION_TYPE_BUY)
+         {
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            if(price > max_price)
+               max_price = price;
+         }
+      }
+   }
+   return (max_price == -1) ? -1 : max_price;
+}
