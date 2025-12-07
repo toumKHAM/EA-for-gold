@@ -1,0 +1,182 @@
+#include <Trade\Trade.mqh>
+CTrade trade;
+
+double my_gap_sell = 2.5;
+double tp1 = 4;
+double tp2 = 3.5;
+double tp3 = 3.3;
+
+
+int OnInit()
+{
+   Print("EA-V4-Sell: Started .... ");
+   //--- create timer
+   //EventSetTimer(10);
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+   Print("EA-V4-Sell: Closeed .... ");
+   //--- destroy timer
+   //EventKillTimer();
+}
+
+void OnTick()
+{
+    RunEA_sell();
+}
+
+
+void RunEA_sell()
+{
+   string symbol = _Symbol;
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   SellInfo sell = GetSellInfo();
+   
+   if (sell.max_price != -1){
+      double target_sell = sell.max_price + my_gap_sell;
+      
+      double now_lot_size = sell.max_lot_size;
+      double new_lot_size = now_lot_size * 2;
+      double buy_lot_size = 0;
+      
+      if(new_lot_size < 200){
+         if( bid >= target_sell ){
+            trade.Sell(new_lot_size, symbol, bid, 0, 0);
+            if(new_lot_size == 0.04 ){
+               buy_lot_size = 0.02;
+            }else if(new_lot_size == 0.08 ){
+               buy_lot_size = 0.04;
+            }else if(new_lot_size == 0.16 ){
+               buy_lot_size = 0.08;
+            }else if(new_lot_size == 0.32 ){
+               buy_lot_size = 0.1;
+            }else if(new_lot_size == 0.64 ){
+               buy_lot_size = 0.3;
+            }else if(new_lot_size == 1.28 ){
+               buy_lot_size = 0.6;
+            }else if(new_lot_size == 2.56 ){
+               buy_lot_size = 1;
+            }else if(new_lot_size == 5.12 ){
+               buy_lot_size = 2;
+            }else if(new_lot_size == 10.24 ){
+               buy_lot_size = 5;
+            }else if(new_lot_size == 20.48 ){
+               buy_lot_size = 10;
+            }else if(new_lot_size == 40.96 ){
+               buy_lot_size = 20;
+            }else if(new_lot_size == 81.92 ){
+               buy_lot_size = 40;
+            }else if(new_lot_size == 163.84 ){
+               buy_lot_size = 80;
+            }
+            
+            if(buy_lot_size > 0){
+               trade.Buy(buy_lot_size, symbol, ask, 0, 0);
+            }
+         }
+      }
+      
+      sell = GetSellInfo();
+      
+      if(sell.max_lot_size < 5 ){
+         if(sell.max_price - ask > tp1){
+             CloseAll(symbol);
+         }
+      }else if(sell.max_lot_size > 5 && sell.max_lot_size < 20 ){
+         if(sell.max_price - ask > tp2){
+             CloseAll(symbol);
+         }
+      }else if(sell.max_lot_size > 20 ){
+         if(sell.max_price - ask > tp3){
+             CloseAll(symbol);
+         }
+      }
+
+      
+   }else{
+      trade.Sell(0.01, symbol, bid, 0, bid - 2);
+   }
+   
+}
+
+
+void OnTimer()
+{
+   Print("OnTimer--------------");
+   SellInfo sell = GetSellInfo();
+   Print("count: ",sell.count);
+   Print("max_price: ",sell.max_price);
+   Print("max_lot_size: ",sell.max_lot_size);
+
+}
+
+
+struct SellInfo
+{
+   int count;
+   double max_price;
+   double max_lot_size;
+};
+
+
+SellInfo GetSellInfo()
+{
+
+    SellInfo info;
+    info.count = 0;
+    info.max_price = -1;
+    info.max_lot_size = -1;
+    
+    
+    int total = PositionsTotal(); // ???????? positions ??????????
+
+    for(int i = 0; i < total; i++)
+    {
+        if(PositionGetTicket(i)) // ????? position ??? index
+        {
+            long   type       = PositionGetInteger(POSITION_TYPE);
+            double volume = PositionGetDouble(POSITION_VOLUME);
+
+            if(type == POSITION_TYPE_SELL && volume!=1 ){
+               // count
+               info.count++; 
+               
+               // max
+               double price = PositionGetDouble(POSITION_PRICE_OPEN);
+               if (price > info.max_price){
+                  info.max_price = price;
+               }
+               
+               // lot
+               // double volume = PositionGetDouble(POSITION_VOLUME);
+               if (volume > info.max_lot_size){
+                  info.max_lot_size = volume;
+               }
+            }
+        }
+    }
+
+    return info;
+}
+
+void CloseAll(string symbol)
+{
+   int total = PositionsTotal();
+
+   for(int i = total - 1; i >= 0; i--) // ??????????????????????? index error
+   {
+      if(PositionGetTicket(i))
+      {
+         string pos_symbol = PositionGetString(POSITION_SYMBOL);
+
+         if( pos_symbol == symbol)
+         {
+            trade.PositionClose(symbol);
+         }
+      }
+   }
+}
