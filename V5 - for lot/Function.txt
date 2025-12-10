@@ -1,0 +1,303 @@
+//+------------------------------------------------------------------+
+//|                                                       ForBuy.mqh |
+//|                                  Copyright 2025, MetaQuotes Ltd. |
+#include <Trade\Trade.mqh>
+
+double GetSmallBuyPrice()
+{
+   double min_price = DBL_MAX;  // Start with max possible value
+   int total = PositionsTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (PositionGetTicket(i))
+      {
+         int type = (int)PositionGetInteger(POSITION_TYPE);
+         if (type == POSITION_TYPE_BUY)
+         {
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            if (price < min_price)
+               min_price = price;
+         }
+      }
+   }
+
+   // If no buy positions found, return -1 or handle accordingly
+   return (min_price == DBL_MAX) ? -1 : min_price;
+}
+
+double GetHighSellPrice()
+{
+   double max_price = -DBL_MAX;  // Start with max possible value
+   int total = PositionsTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (PositionGetTicket(i))
+      {
+         int type = (int)PositionGetInteger(POSITION_TYPE);
+         if (type == POSITION_TYPE_SELL)
+         {
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            if (price > max_price)
+               max_price = price;
+         }
+      }
+   }
+
+   // If no buy positions found, return -1 or handle accordingly
+   return (max_price == -DBL_MAX) ? -1 : max_price;
+}
+
+bool HasBuyLimitOrder(string symbol)
+{
+   int total = OrdersTotal();
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         if (OrderGetString(ORDER_SYMBOL) == symbol &&
+             (int)OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_LIMIT)
+         {
+            return true;
+         }
+      }
+   }
+   return false;
+}
+
+bool HasSellLimitOrder(string symbol)
+{
+   int total = OrdersTotal();
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         if (OrderGetString(ORDER_SYMBOL) == symbol &&
+             (int)OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_LIMIT)
+         {
+            return true;
+         }
+      }
+   }
+   return false;
+}
+
+double GetHighBuyLimitPrice(string symbol)
+{
+   double highest_price = -1;
+   int total = OrdersTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         int type = (int)OrderGetInteger(ORDER_TYPE);
+         string order_symbol = OrderGetString(ORDER_SYMBOL);
+         double price = OrderGetDouble(ORDER_PRICE_OPEN);
+
+         if (type == ORDER_TYPE_BUY_LIMIT && order_symbol == symbol)
+         {
+            if (price > highest_price)
+               highest_price = price;
+         }
+      }
+   }
+
+   return highest_price;
+}
+
+double GetSmallSellLimitPrice(string symbol)
+{
+   double small_price = DBL_MAX;
+   int total = OrdersTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         int type = (int)OrderGetInteger(ORDER_TYPE);
+         string order_symbol = OrderGetString(ORDER_SYMBOL);
+         double price = OrderGetDouble(ORDER_PRICE_OPEN);
+
+         if (type == ORDER_TYPE_SELL_LIMIT && order_symbol == symbol)
+         {
+            if (price < small_price)
+               small_price = price;
+         }
+      }
+   }
+
+   return small_price;
+}
+
+void ModifyBuyLimitPrice(string symbol, double old_price, double new_price, double new_tp)
+{
+   int total = OrdersTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         int type = (int)OrderGetInteger(ORDER_TYPE);
+         string order_symbol = OrderGetString(ORDER_SYMBOL);
+         double price = OrderGetDouble(ORDER_PRICE_OPEN);
+         ulong ticket = OrderGetInteger(ORDER_TICKET);
+         double sl = 0; // No Stop Loss
+         double tp = new_tp;
+
+         // Match Buy Limit at old_price
+         if (type == ORDER_TYPE_BUY_LIMIT &&
+             order_symbol == symbol &&
+             NormalizeDouble(price, _Digits) == NormalizeDouble(old_price, _Digits))
+         {
+            new_price = NormalizeDouble(new_price, _Digits);
+            tp = NormalizeDouble(new_tp, _Digits);
+
+            // Modify the Buy Limit order
+            if (trade.OrderModify(ticket, new_price, sl, tp, ORDER_TIME_GTC,0, 0.01))
+               Print("Successfully modified Buy Limit order ", ticket, " from ", old_price, " to ", new_price, " with TP: ", new_tp);
+            else
+               Print("Failed to modify order: ", trade.ResultRetcode(), " - ", trade.ResultRetcodeDescription());
+
+            return; // Only modify the first matching order
+         }
+      }
+   }
+
+   Print("No Buy Limit order found at price ", old_price);
+}
+
+void ModifySellLimitPrice(string symbol, double old_price, double new_price, double new_tp)
+{
+   int total = OrdersTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         int type = (int)OrderGetInteger(ORDER_TYPE);
+         string order_symbol = OrderGetString(ORDER_SYMBOL);
+         double price = OrderGetDouble(ORDER_PRICE_OPEN);
+         ulong ticket = OrderGetInteger(ORDER_TICKET);
+         double sl = 0; // No Stop Loss
+         double tp = new_tp;
+
+         // Match Buy Limit at old_price
+         if (type == ORDER_TYPE_SELL_LIMIT &&
+             order_symbol == symbol &&
+             NormalizeDouble(price, _Digits) == NormalizeDouble(old_price, _Digits))
+         {
+            new_price = NormalizeDouble(new_price, _Digits);
+            tp = NormalizeDouble(new_tp, _Digits);
+
+            // Modify the Buy Limit order
+            if (trade.OrderModify(ticket, new_price, sl, tp, ORDER_TIME_GTC,0, 0.01))
+               Print("Successfully modified Sell Limit order ", ticket, " from ", old_price, " to ", new_price, " with TP: ", new_tp);
+            else
+               Print("Failed to modify order: ", trade.ResultRetcode(), " - ", trade.ResultRetcodeDescription());
+
+            return; // Only modify the first matching order
+         }
+      }
+   }
+
+   Print("No Sell Limit order found at price ", old_price);
+}
+
+bool HasBuyStopOrder(string symbol)
+{
+   int total = OrdersTotal();
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         if (OrderGetString(ORDER_SYMBOL) == symbol &&
+             (int)OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_BUY_STOP)
+         {
+            return true;
+         }
+      }
+   }
+   return false;
+}
+
+bool HasSellStopOrder(string symbol)
+{
+   int total = OrdersTotal();
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         if (OrderGetString(ORDER_SYMBOL) == symbol &&
+             (int)OrderGetInteger(ORDER_TYPE) == ORDER_TYPE_SELL_STOP)
+         {
+            return true;
+         }
+      }
+   }
+   return false;
+}
+
+double GetHighBuyPrice()
+{
+   double max_price = -1;
+   int total = PositionsTotal();
+
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket > 0 && PositionSelectByTicket(ticket))
+      {
+         int type = (int)PositionGetInteger(POSITION_TYPE);
+         if(type == POSITION_TYPE_BUY)
+         {
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            if(price > max_price)
+               max_price = price;
+         }
+      }
+   }
+   return (max_price == -1) ? -1 : max_price;
+}
+
+double GetSmallSellPrice()
+{
+   double min_price = DBL_MAX;
+   int total = PositionsTotal();
+
+   for(int i = 0; i < total; i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket > 0 && PositionSelectByTicket(ticket))
+      {
+         int type = (int)PositionGetInteger(POSITION_TYPE);
+         if(type == POSITION_TYPE_SELL)
+         {
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            if(price < min_price)
+               min_price = price;
+         }
+      }
+   }
+   return (min_price == DBL_MAX) ? -1 : min_price;
+}
+
+void CloseAll(string symbol)
+{
+   int total = PositionsTotal();
+
+   for(int i = total - 1; i >= 0; i--) // ??????????????????????? index error
+   {
+      if(PositionGetTicket(i))
+      {
+         string pos_symbol = PositionGetString(POSITION_SYMBOL);
+         long   type       = PositionGetInteger(POSITION_TYPE);
+
+         if( pos_symbol == symbol)
+         {
+            trade.PositionClose(symbol);
+         }
+      }
+   }
+}
