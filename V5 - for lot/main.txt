@@ -1,0 +1,108 @@
+#include <Trade\Trade.mqh>
+CTrade trade;
+
+#include <Function.mqh>
+
+double my_profit = 2;
+double my_gap = 2;
+
+double balance = 0;
+
+int OnInit()
+{
+   balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+ 
+}
+
+void OnTick()
+{
+   Run_Buy();
+   Run_Sell();
+   
+   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
+   if(equity >= balance+0.2){
+      CloseAll(_Symbol);
+      balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   }
+}
+
+void Run_Buy()
+{
+      string symbol = _Symbol;
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      
+      double minBuyPrice = GetSmallBuyPrice();
+      double maxBuyPrice = GetHighBuyPrice();
+      
+      if (minBuyPrice != -1){
+         double targetPrice = minBuyPrice - my_gap;
+
+         if (HasBuyLimitOrder(_Symbol)){
+            double maxBuyLimitPrice = GetHighBuyLimitPrice(symbol);
+            if( maxBuyLimitPrice < targetPrice ){
+               ModifyBuyLimitPrice(_Symbol, maxBuyLimitPrice, targetPrice, targetPrice+my_profit);
+            }
+         }else{
+            double take_profit = targetPrice + my_profit;
+            trade.BuyLimit(0.02, targetPrice, symbol, 0, take_profit, NULL);
+            Print("New Buy Limit ---->: ", targetPrice);
+         }
+
+      }
+      else{
+         Print("No Order Buy , Buy Now---->: ", ask);
+         trade.Buy(0.02, symbol, ask, 0, ask+my_profit);
+      }
+      
+      if(HasBuyStopOrder(symbol)){
+      
+      }else{
+         double target_stop = maxBuyPrice + my_gap;
+         trade.BuyStop(0.02, target_stop, symbol, 0, target_stop+my_profit, NULL);
+         Print("New Buy Stop: ==> ",target_stop);
+      }
+   
+ }
+
+void Run_Sell()
+{
+      string symbol = _Symbol;
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      
+      double maxSellPrice = GetHighSellPrice();
+      double minSellPrice = GetSmallSellPrice();
+      
+      if (maxSellPrice != -1){
+         double targetPrice = maxSellPrice + my_gap;
+
+         if (HasSellLimitOrder(_Symbol)){
+            double minSellLimitPrice = GetSmallSellLimitPrice(symbol);
+            if( minSellLimitPrice > targetPrice ){
+               ModifySellLimitPrice(_Symbol, minSellLimitPrice, targetPrice, targetPrice-my_profit);
+            }
+         }else{
+            double take_profit = targetPrice - my_profit;
+            trade.SellLimit(0.01, targetPrice, symbol, 0, take_profit, NULL);
+            Print("New Sell Limit ---->: ", targetPrice);
+         }
+
+      }
+      else{
+         Print("No Order Buy , Buy Now---->: ", bid);
+         trade.Sell(0.01, symbol, bid, 0, bid-my_profit);
+      }
+      
+      if(HasSellStopOrder(symbol)){
+      
+      }else{
+         double target_stop = minSellPrice - my_gap;
+         trade.SellStop(0.01, target_stop, symbol, 0, target_stop-my_profit, NULL);
+         Print("New Sell Stop: ==> ",target_stop);
+      }
+   
+ }
