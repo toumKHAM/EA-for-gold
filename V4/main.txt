@@ -1,11 +1,7 @@
 #include <Trade\Trade.mqh>
 CTrade trade;
 
-double my_gap_sell = 2.5;
-double tp1 = 4;
-double tp2 = 3.5;
-double tp3 = 3.3;
-
+double my_gap_sell = 3.5;
 
 int OnInit()
 {
@@ -33,6 +29,7 @@ void RunEA_sell()
    string symbol = _Symbol;
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double tp = 5;
    
    SellInfo sell = GetSellInfo();
    
@@ -46,32 +43,28 @@ void RunEA_sell()
       if(new_lot_size < 200){
          if( bid >= target_sell ){
             trade.Sell(new_lot_size, symbol, bid, 0, 0);
-            if(new_lot_size == 0.04 ){
-               buy_lot_size = 0.02;
-            }else if(new_lot_size == 0.08 ){
+            if(new_lot_size == 0.16 ){
                buy_lot_size = 0.04;
-            }else if(new_lot_size == 0.16 ){
-               buy_lot_size = 0.08;
             }else if(new_lot_size == 0.32 ){
-               buy_lot_size = 0.1;
+               buy_lot_size = 0.08;
             }else if(new_lot_size == 0.64 ){
-               buy_lot_size = 0.3;
+               buy_lot_size = 0.16;
             }else if(new_lot_size == 1.28 ){
-               buy_lot_size = 0.6;
+               buy_lot_size = 0.32;
             }else if(new_lot_size == 2.56 ){
-               buy_lot_size = 1;
+               buy_lot_size = 0.64;
             }else if(new_lot_size == 5.12 ){
-               buy_lot_size = 2;
+               buy_lot_size = 1.28;
             }else if(new_lot_size == 10.24 ){
-               buy_lot_size = 5;
+               buy_lot_size = 2.56;
             }else if(new_lot_size == 20.48 ){
-               buy_lot_size = 10;
+               buy_lot_size = 5.12;
             }else if(new_lot_size == 40.96 ){
-               buy_lot_size = 20;
+               buy_lot_size = 10.24;
             }else if(new_lot_size == 81.92 ){
-               buy_lot_size = 40;
+               buy_lot_size = 20.48;
             }else if(new_lot_size == 163.84 ){
-               buy_lot_size = 80;
+               buy_lot_size = 40.96;
             }
             
             if(buy_lot_size > 0){
@@ -82,16 +75,12 @@ void RunEA_sell()
       
       sell = GetSellInfo();
       
-      if(sell.max_lot_size < 5 ){
-         if(sell.max_price - ask > tp1){
+      if(sell.count == 2 ){
+         if(sell.max_price - ask > 4){
              CloseAll(symbol);
          }
-      }else if(sell.max_lot_size > 5 && sell.max_lot_size < 20 ){
-         if(sell.max_price - ask > tp2){
-             CloseAll(symbol);
-         }
-      }else if(sell.max_lot_size > 20 ){
-         if(sell.max_price - ask > tp3){
+      }else if(sell.count > 2 ){
+         if(sell.max_price - ask > tp){
              CloseAll(symbol);
          }
       }
