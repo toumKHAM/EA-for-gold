@@ -75,8 +75,12 @@ void RunEA_sell()
       
       sell = GetSellInfo();
       
-      if(sell.count == 2 ){
-         if(sell.max_price - ask > 4){
+      if(sell.count == 1 ){
+         if(sell.max_price - ask > 1){
+             CloseAll(symbol);
+         }
+      }else if(sell.count == 2 ){
+         if(sell.max_price - ask > 3.7){
              CloseAll(symbol);
          }
       }else if(sell.count > 2 ){
@@ -87,7 +91,7 @@ void RunEA_sell()
 
       
    }else{
-      trade.Sell(0.01, symbol, bid, 0, bid - 2);
+      trade.Sell(0.01, symbol, bid, 0, bid - 0.3);
    }
    
 }
