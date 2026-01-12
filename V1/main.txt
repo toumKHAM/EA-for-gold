@@ -4,24 +4,24 @@
 
 #include <Trade\Trade.mqh>
 CTrade trade;
-//+------------------------------------------------------------------+
-//| ລົງ1ຊື້.ບວກ1ເກັບ                               |
-//+------------------------------------------------------------------+
-double my_profit = 5;
-double my_gap = 2.5;
+
+double my_profit = 5.1;
+double my_gap = 1.5;
+double lot_size = 0.02;
+
 int OnInit()
- {
+{
    Print("EA-buy-V1: Started .... ");
    return(INIT_SUCCEEDED);
- }
+}
   
 void OnDeinit(const int reason)
- {
+{
    Print("EA-buy-V1: Closeed .... ");
- }
+}
   
 void OnTick()
- {
+{
       string symbol = _Symbol;
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       
@@ -35,28 +35,33 @@ void OnTick()
             double maxBuyLimitPrice = GetHighestBuyLimitPrice(symbol);
             if( maxBuyLimitPrice < targetPrice ){
                ModifyBuyLimitPrice(_Symbol, maxBuyLimitPrice, targetPrice, targetPrice+my_profit);
+               ModifyMinBuyTp();
             }
          }else{
+            ModifyMinBuyTp();
             double take_profit = targetPrice + my_profit;
-            trade.BuyLimit(0.02, targetPrice, symbol, 0, take_profit, NULL);
+            trade.BuyLimit(lot_size, targetPrice, symbol, 0, take_profit, NULL);
             Print("New Buy Limit ---->: ", targetPrice);
          }
 
       }
       else{
          Print("No Order Buy , Buy Now---->: ", ask);
-         trade.Buy(0.02, symbol, ask, 0, ask+my_profit);
+         trade.Buy(lot_size, symbol, ask, 0, ask+my_profit);
       }
       
       if(HasBuyStopOrder(symbol)){
       
       }else{
          double target_stop = maxBuyPrice + my_gap;
-         trade.BuyStop(0.02, target_stop, symbol, 0, target_stop+my_profit, NULL);
+         trade.BuyStop(lot_size, target_stop, symbol, 0, target_stop+my_profit, NULL);
          Print("New Buy Stop: ==> ",target_stop);
       }
+      
+      
+      
    
- }
+}
 //+------------------------------------------------------------------+
 
 double GetSmallestBuyPrice()
@@ -198,4 +203,28 @@ double GetHighestBuyPrice()
       }
    }
    return (max_price == -1) ? -1 : max_price;
+}
+
+void ModifyMinBuyTp(){
+   double minBuyPrice = GetSmallestBuyPrice();
+   int total = PositionsTotal(); // ????? positions ??????????
+   for(int i = 0; i < total; i++)
+   {
+      if(PositionGetTicket(i)) // ????? position ??? index
+      {
+         long   type       = PositionGetInteger(POSITION_TYPE);
+         double price = PositionGetDouble(POSITION_PRICE_OPEN);
+         
+         if(type == POSITION_TYPE_BUY && price == minBuyPrice ){
+            ulong  ticket = PositionGetInteger(POSITION_TICKET);
+            //Print("ticket: ",ticket," , price: ",price);
+            double old_tp = PositionGetDouble(POSITION_TP);
+            double new_tp = price + my_profit;
+            if(new_tp != old_tp){
+               trade.PositionModify(ticket, 0, new_tp);
+            }
+            
+         }
+      }
+    }
 }
