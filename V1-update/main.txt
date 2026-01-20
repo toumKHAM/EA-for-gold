@@ -1,0 +1,222 @@
+#property copyright "Copyright 2025, MetaQuotes Ltd."
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+
+#include <Trade\Trade.mqh>
+CTrade trade;
+
+CTrade tradeBuy;
+long MagicBuy  = 111;
+
+double my_profit = 1;
+double my_gap = 0.5;
+double lot_size = 0.01;
+
+int OnInit()
+{
+   Print("EA-buy-V1: Started .... ");
+   tradeBuy.SetExpertMagicNumber(MagicBuy);
+   return(INIT_SUCCEEDED);
+}
+  
+void OnDeinit(const int reason)
+{
+   Print("EA-buy-V1: Closeed .... ");
+}
+  
+void OnTick()
+{
+      string symbol = _Symbol;
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      
+      BuyInfoV1 buy = GetBuyInfoV1();
+      if(buy.min_buy_price1 != 99999){
+         // for buy stop
+         double target_stop = buy.max_buy_price + my_gap;
+         if(buy.min_buy_stop == 99999){ // no buy stop
+            tradeBuy.BuyStop(lot_size, target_stop, symbol, 0, target_stop+my_profit, NULL); 
+         }
+         
+         
+         // for buy limit
+         double target_limit = buy.min_buy_price1 - my_gap;
+         if(buy.min_buy_limit == 99999){ // no buy limit
+            Print("New Buy limit: ",target_limit);
+            if(tradeBuy.BuyLimit(lot_size, target_limit, symbol, 0, target_limit+my_profit, NULL) == false){
+               double buy_stop_price = target_limit;
+               if(buy.min_buy_price1 < buy.min_buy_stop){
+                  buy_stop_price = buy.min_buy_price1 - my_gap;
+               }else{
+                  buy_stop_price = buy.min_buy_stop - my_gap;
+               }
+               tradeBuy.BuyStop(lot_size, buy_stop_price, symbol, 0, buy_stop_price+my_profit, NULL); 
+            }
+         }else{ // has buy limit
+            if(buy.min_buy_limit < target_limit){
+               if(ModifyBuyLimitPrice(buy.min_buy_limit, target_limit, target_limit+my_profit)==false){
+                  DeleteAllBuyLimit();
+               }
+            }
+         }
+         
+         
+         
+      }else{
+         Print("No Order , Buy Now---->: ", ask);
+         tradeBuy.Buy(lot_size, symbol, ask, 0, ask+my_profit);
+      }
+      
+      buy = GetBuyInfoV1();
+      ModifyMinBuyTp(buy.min_buy_price1);
+      
+      
+      if( buy.min_buy_price2!=99999 && buy.min_buy_price2 - buy.min_buy_price1 > 2*my_gap){
+         Print("----buy.min_buy_price2 - buy.min_buy_price1 : ",buy.min_buy_price2 - buy.min_buy_price1);
+         double buy_stop_price = buy.min_buy_price2 - my_gap;
+         if(buy.min_buy_price2 < buy.min_buy_stop){
+            buy_stop_price = buy.min_buy_price2 - my_gap;
+         }else{
+            buy_stop_price = buy.min_buy_stop - my_gap;
+         }
+         Print("----buy_stop_price: ",buy_stop_price);
+         tradeBuy.BuyStop(lot_size, buy_stop_price, symbol, 0, buy_stop_price+my_profit, NULL); 
+      }
+      
+      
+      
+}
+//+------------------------------------------------------------------+
+struct BuyInfoV1
+{
+   double max_buy_price;
+   double min_buy_price1; // min
+   double min_buy_price2;
+   double min_buy_stop;
+   double min_buy_limit;
+};
+
+BuyInfoV1 GetBuyInfoV1()
+{
+
+    BuyInfoV1 info;
+    info.max_buy_price  = -1;
+    info.min_buy_price1 = 99999;
+    info.min_buy_price2 = 99999;
+    
+    
+    //--- for position
+    int position_total = PositionsTotal();
+    for (int i = 0; i < position_total; i++){
+      if (PositionGetTicket(i)){
+         long type = PositionGetInteger(POSITION_TYPE);
+         long magicNumber = PositionGetInteger(POSITION_MAGIC);
+         if (type == POSITION_TYPE_BUY && magicNumber == MagicBuy) 
+         {
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            if (price > info.max_buy_price){
+               info.max_buy_price = price;
+            }
+            if(price < info.min_buy_price1){
+               info.min_buy_price2 = info.min_buy_price1;
+               info.min_buy_price1 = price;
+            }
+         }
+      }
+    }
+    
+    info.min_buy_stop   = 99999;
+    info.min_buy_limit  = 99999;
+    
+    //--- for pending order
+    int pending_total = OrdersTotal();
+    for (int i = 0; i < pending_total; i++){
+      if (OrderGetTicket(i)){
+         int type = (int)OrderGetInteger(ORDER_TYPE);
+         long magicNumber = PositionGetInteger(POSITION_MAGIC);
+         double price = OrderGetDouble(ORDER_PRICE_OPEN);
+         
+         if (type == ORDER_TYPE_BUY_LIMIT && magicNumber == MagicBuy && price < info.min_buy_limit)
+         {
+            info.min_buy_limit = price;
+         }
+         
+         if (type == ORDER_TYPE_BUY_STOP && magicNumber == MagicBuy && price < info.min_buy_stop)
+         {
+            info.min_buy_stop = price;
+         }
+      }
+    }
+    
+    return info;
+}
+
+bool ModifyBuyLimitPrice(double old_price, double new_price, double new_tp)
+{
+   int total = OrdersTotal();
+   for (int i = 0; i < total; i++)
+   {
+      if (OrderGetTicket(i))
+      {
+         int type = (int)OrderGetInteger(ORDER_TYPE);
+         double price = OrderGetDouble(ORDER_PRICE_OPEN);
+         ulong ticket = OrderGetInteger(ORDER_TICKET);
+         double sl = 0; // No Stop Loss
+         double tp = new_tp;
+         
+         long magicNumber = PositionGetInteger(POSITION_MAGIC);
+
+         // Match Buy Limit at old_price
+         if (type == ORDER_TYPE_BUY_LIMIT && NormalizeDouble(price, _Digits) == NormalizeDouble(old_price, _Digits) && magicNumber == MagicBuy)
+         {
+            new_price = NormalizeDouble(new_price, _Digits);
+            tp = NormalizeDouble(new_tp, _Digits);
+            return tradeBuy.OrderModify(ticket, new_price, sl, tp, ORDER_TIME_GTC,0, 0.01);
+         }
+      }
+   }
+   return true;
+}
+
+
+void ModifyMinBuyTp(double minBuyPrice){
+   int total = PositionsTotal();
+   for(int i = 0; i < total; i++)
+   {
+      if(PositionGetTicket(i)) 
+      {
+         long   type  = PositionGetInteger(POSITION_TYPE);
+         double price = PositionGetDouble(POSITION_PRICE_OPEN);
+         long magicNumber = PositionGetInteger(POSITION_MAGIC);
+         
+         if(type == POSITION_TYPE_BUY && magicNumber == MagicBuy && price == minBuyPrice ){
+            ulong  ticket = PositionGetInteger(POSITION_TICKET);
+            //Print("ticket: ",ticket," , price: ",price);
+            double old_tp = PositionGetDouble(POSITION_TP);
+            double new_tp = price + my_profit;
+            if(new_tp != old_tp){
+               tradeBuy.PositionModify(ticket, 0, new_tp);
+            }
+            return;
+         }
+      }
+    }
+}
+
+void DeleteAllBuyLimit()
+{
+   int total = OrdersTotal();
+   for(int i = total - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+      if(OrderSelect(ticket))
+      {
+         int type   = (int)OrderGetInteger(ORDER_TYPE);
+         long magicNumber = PositionGetInteger(POSITION_MAGIC);
+
+         if( magicNumber == MagicBuy && type == ORDER_TYPE_BUY_LIMIT)
+         {
+            tradeBuy.OrderDelete(ticket);
+         }
+      }
+   }
+}
