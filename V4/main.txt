@@ -1,7 +1,7 @@
 #include <Trade\Trade.mqh>
 CTrade trade;
 
-double my_gap_sell = 3.5;
+double my_gap_sell = 5.5;
 
 int OnInit()
 {
@@ -29,7 +29,7 @@ void RunEA_sell()
    string symbol = _Symbol;
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double tp = 5;
+   double tp = 9;
    
    SellInfo sell = GetSellInfo();
    
@@ -80,7 +80,7 @@ void RunEA_sell()
              CloseAll(symbol);
          }
       }else if(sell.count == 2 ){
-         if(sell.max_price - ask > 3.7){
+         if(sell.max_price - ask > 5.8){
              CloseAll(symbol);
          }
       }else if(sell.count > 2 ){
@@ -91,9 +91,27 @@ void RunEA_sell()
 
       
    }else{
-      trade.Sell(0.01, symbol, bid, 0, bid - 0.3);
+      double min_buy = GetSmallestBuyPrice();
+      if(min_buy != -1){
+         CloseAll(symbol);
+      }
+      trade.Sell(0.01, symbol, bid, 0, bid - 1);
    }
    
+}
+
+bool IsSellTime()
+{
+   datetime now = TimeCurrent();   // server time
+   //Print("------------------- ",now);
+   MqlDateTime t;
+   TimeToStruct(now, t);
+
+   int minutesNow   = t.hour * 60 + t.min;
+   int minutesStart = 1 * 60 + 10;    // 01:10
+   int minutesEnd   = 22 * 60 + 30 ;   // 22:30
+
+   return (minutesNow >= minutesStart && minutesNow <= minutesEnd);
 }
 
 
@@ -172,4 +190,28 @@ void CloseAll(string symbol)
          }
       }
    }
+}
+
+//--- for buy
+double GetSmallestBuyPrice()
+{
+   double min_price = DBL_MAX;  // Start with max possible value
+   int total = PositionsTotal();
+
+   for (int i = 0; i < total; i++)
+   {
+      if (PositionGetTicket(i))
+      {
+         int type = (int)PositionGetInteger(POSITION_TYPE);
+         if (type == POSITION_TYPE_BUY)
+         {
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            if (price < min_price)
+               min_price = price;
+         }
+      }
+   }
+
+   // If no buy positions found, return -1 or handle accordingly
+   return (min_price == DBL_MAX) ? -1 : min_price;
 }
