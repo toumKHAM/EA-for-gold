@@ -1,0 +1,287 @@
+#include <Trade\Trade.mqh>
+
+CTrade tradeBuy;
+CTrade tradeSell;
+
+long MagicBuy   = 445;
+long MagicSell  = 444;
+
+double my_gap_buy = 10;
+double my_tp_buy = 20;
+
+double my_gap_sell = 10;
+double my_tp_sell = 15;
+
+int OnInit()
+{
+   tradeSell.SetExpertMagicNumber(MagicSell);
+   tradeBuy.SetExpertMagicNumber(MagicBuy);
+   return(INIT_SUCCEEDED);
+}
+void OnDeinit(const int reason){
+
+}
+
+void OnTick(){
+   Run_buyV4();
+   Run_sellV4();
+}
+
+//------- for buy ---------//
+
+void Run_buyV4(){
+   string symbol = _Symbol;
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   BuyInfoV4 buy = GetBuyInfoV4();
+   if(buy.min_price != 99999){
+      double target_buy = buy.min_price - my_gap_buy;
+      double new_lot_size = buy.next_lot_size;
+      if(new_lot_size <= 109.46){
+         if( ask <= target_buy ){
+            tradeBuy.Buy(new_lot_size, symbol, ask, 0, 0, "Buy");
+            double sell_lot_size = 0;
+            if(new_lot_size == 0.21 ){ sell_lot_size = 0.08; }
+            else if(new_lot_size == 0.34 ){ sell_lot_size = 0.13; }
+            else if(new_lot_size == 0.55 ){ sell_lot_size = 0.21; }
+            else if(new_lot_size == 0.89 ){ sell_lot_size = 0.34; }
+            else if(new_lot_size == 1.44 ){ sell_lot_size = 0.55; }
+            else if(new_lot_size == 2.33 ){ sell_lot_size = 0.89; }
+            else if(new_lot_size == 3.77 ){ sell_lot_size = 1.44; }
+            else if(new_lot_size == 6.1 ){ sell_lot_size = 2.33; }
+            else if(new_lot_size == 9.87 ){ sell_lot_size = 3.77; }
+            else if(new_lot_size == 15.97 ){ sell_lot_size = 6.1; }
+            else if(new_lot_size == 25.84 ){ sell_lot_size = 9.87; }
+            else if(new_lot_size == 41.81 ){ sell_lot_size = 15.97; }
+            else if(new_lot_size == 67.65 ){ sell_lot_size = 25.84; }
+            else if(new_lot_size == 109.46 ){ sell_lot_size = 41.81; }
+            
+            if(sell_lot_size > 0){
+               tradeBuy.Sell(sell_lot_size, symbol, bid, 0, 0, "Buy");
+            }
+         }
+      }
+      
+      CheckAndClose_Buy();
+   }else{
+      tradeBuy.Buy(0.01, symbol, ask, 0, ask + 1, "Buy");
+   }
+}
+
+struct BuyInfoV4
+{
+   int count;
+   double min_price;
+   double max_lot_size;
+   double next_lot_size;
+};
+
+BuyInfoV4 GetBuyInfoV4()
+{
+    BuyInfoV4 info;
+    info.count = 0;
+    info.min_price = 99999;
+    info.max_lot_size = 0;
+    info.next_lot_size = 0;
+    
+    
+    int total = PositionsTotal();
+
+    for(int i = 0; i < total; i++)
+    {
+        if(PositionGetTicket(i)) 
+        {
+            long   type       = PositionGetInteger(POSITION_TYPE);
+            double volume = PositionGetDouble(POSITION_VOLUME);
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            long magicNumber = PositionGetInteger(POSITION_MAGIC);
+
+            if(type == POSITION_TYPE_BUY && magicNumber == MagicBuy ){
+               // count
+               info.count++; 
+               
+               // min
+               if (price < info.min_price){
+                  info.min_price = price;
+               }
+               
+               // lot
+               if (volume > info.max_lot_size){
+                  info.max_lot_size = volume;
+               }
+            }
+        }
+    }
+    
+    double next[19] = { 0.02, 0.03, 0.05, 0.08, 0.13, 0.21, 0.34, 0.55, 0.89, 1.44, 2.33, 3.77, 6.1, 9.87, 15.97, 25.84, 41.81, 67.65, 109.46 };
+    if(info.count > 0){
+      info.next_lot_size = next[info.count-1];
+    }
+    
+    return info;
+}
+
+void CheckAndClose_Buy(){
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   BuyInfoV4 buy = GetBuyInfoV4();
+   if(buy.count == 1 ){
+      if(bid - buy.min_price  > 1){
+         CloseBuy();
+      }
+   }
+   if(buy.count == 2 ){
+      if( bid - buy.min_price  > my_gap_buy+1){
+         CloseBuy();
+      }
+   }else if(buy.count > 2 ){
+      if(bid - buy.min_price > my_tp_buy){
+         CloseBuy();
+      }
+   }
+   
+}
+
+void CloseBuy(){
+   // loop for close All 
+   for(int i = PositionsTotal() - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      if(PositionGetTicket(i)) {
+         if(PositionGetInteger(POSITION_MAGIC) == MagicBuy && PositionGetString(POSITION_SYMBOL) == _Symbol) {
+            tradeBuy.PositionClose(ticket);
+         }
+      }
+   }
+}
+
+//--- for sell ----//
+
+void Run_sellV4(){
+   string symbol = _Symbol;
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   SellInfoV4 sell = GetSellInfoV4();
+   if (sell.max_price != -1){
+      double target_sell = sell.max_price + my_gap_sell;
+      double now_lot_size = sell.max_lot_size;
+      double new_lot_size = now_lot_size * 2;
+      
+      if(new_lot_size <= 163.84){
+         if( bid >= target_sell ){
+            tradeSell.Sell(new_lot_size, symbol, bid, 0, 0, "Sell");
+            double buy_lot_size = 0;
+            if(new_lot_size == 0.16 ){
+               buy_lot_size = 0.04;
+            }else if(new_lot_size == 0.32 ){
+               buy_lot_size = 0.08;
+            }else if(new_lot_size == 0.64 ){
+               buy_lot_size = 0.16;
+            }else if(new_lot_size == 1.28 ){
+               buy_lot_size = 0.32;
+            }else if(new_lot_size == 2.56 ){
+               buy_lot_size = 0.64;
+            }else if(new_lot_size == 5.12 ){
+               buy_lot_size = 1.28;
+            }else if(new_lot_size == 10.24 ){
+               buy_lot_size = 2.56;
+            }else if(new_lot_size == 20.48 ){
+               buy_lot_size = 5.12;
+            }else if(new_lot_size == 40.96 ){
+               buy_lot_size = 10.24;
+            }else if(new_lot_size == 81.92 ){
+               buy_lot_size = 20.48;
+            }else if(new_lot_size == 163.84 ){
+               buy_lot_size = 40.96;
+            }
+            
+            if(buy_lot_size > 0){
+               tradeSell.Buy(buy_lot_size, symbol, ask, 0, 0, "Sell");
+            }
+         }
+         
+      }
+      CheckAndClose_Sell();
+   }else{
+      tradeSell.Sell(0.01, symbol, bid, 0, bid - 1, "Sell");
+   }
+}
+
+struct SellInfoV4
+{
+   int count;
+   double max_price;
+   double max_lot_size;
+};
+
+SellInfoV4 GetSellInfoV4()
+{
+    SellInfoV4 info;
+    info.count = 0;
+    info.max_price = -1;
+    info.max_lot_size = 0;
+    
+    
+    int total = PositionsTotal();
+
+    for(int i = 0; i < total; i++)
+    {
+        if(PositionGetTicket(i)) 
+        {
+            long   type       = PositionGetInteger(POSITION_TYPE);
+            double volume = PositionGetDouble(POSITION_VOLUME);
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            long magicNumber = PositionGetInteger(POSITION_MAGIC);
+
+            if(type == POSITION_TYPE_SELL && magicNumber == MagicSell ){
+               // count
+               info.count++; 
+               
+               // max
+               if (price > info.max_price){
+                  info.max_price = price;
+               }
+               
+               // lot
+               if (volume > info.max_lot_size){
+                  info.max_lot_size = volume;
+               }
+            }
+        }
+    }
+    return info;
+}
+
+void CheckAndClose_Sell(){
+   //double profit[11] = { 0.1, 0.5, 1, 1.5, 2, 3, 5, 10, 20, 40, 80 };
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   SellInfoV4 sell = GetSellInfoV4();
+   
+   if(sell.count == 1 ){
+      if(sell.max_price - ask > 1){
+         CloseSell();
+      }
+   }
+   if(sell.count == 2 ){
+      if(sell.max_price - ask > my_gap_sell-1){
+         CloseSell();
+      }
+   }else if(sell.count > 2 ){
+      if(sell.max_price - ask > my_tp_sell){
+         CloseSell();
+      }
+   }
+   
+}
+
+void CloseSell(){
+   // loop for close All 
+   for(int i = PositionsTotal() - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      if(PositionGetTicket(i)) {
+         if(PositionGetInteger(POSITION_MAGIC) == MagicSell && PositionGetString(POSITION_SYMBOL) == _Symbol) {
+            tradeSell.PositionClose(ticket);
+         }
+      }
+   }
+}
