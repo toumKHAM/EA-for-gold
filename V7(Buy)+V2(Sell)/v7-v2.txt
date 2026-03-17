@@ -1,0 +1,288 @@
+#property copyright "Copyright 2025, MetaQuotes Ltd."
+#property link      "https://www.mql5.com"
+#property version   "1.00"
+
+#include <Trade\Trade.mqh>
+CTrade trade;
+
+CTrade tradeSell;
+CTrade tradeBuy;
+
+long MagicSell  = 4444;
+long MagicBuy  = 445;
+
+double my_gap_sell = 8;
+double my_tp_sell = 15;
+
+double my_gap_buy = 2;
+double my_tp_buy = 0;
+
+int OnInit()
+{
+   Print("EA-V7(Buy)-V2(Sell): Started .... ");
+   tradeSell.SetExpertMagicNumber(MagicSell);
+   tradeBuy.SetExpertMagicNumber(MagicBuy);
+   return(INIT_SUCCEEDED);
+}
+  
+void OnDeinit(const int reason)
+{
+   Print("EA-V7(Buy)-V2(Sell): Closeed .... ");
+}
+  
+void OnTick()
+{
+      Run_buyV7();
+      Run_SellV2_Magic();
+}
+
+
+void Run_buyV7(){
+   string symbol = _Symbol;
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   BuyInfoV7 buy = GetBuyInfoV7();
+   if(buy.min_price != 99999){
+      double target_buy = buy.min_price - my_gap_buy;
+      double new_lot_size = (buy.count+1)*0.01;
+      if(new_lot_size <= 0.8){
+         if( ask <= target_buy ){
+            tradeBuy.Buy(new_lot_size, symbol, ask, 0, 0, "Buy");
+            
+         }
+      }
+      
+      CheckAndClose_Buy();
+   }else{
+      tradeBuy.Buy(0.01, symbol, ask, 0, ask + 2, "Buy");
+   }
+}
+
+struct BuyInfoV7
+{
+   int count;
+   double max_price;
+   double min_price;
+};
+
+
+BuyInfoV7 GetBuyInfoV7()
+{
+    BuyInfoV7 info;
+    info.count = 0;
+    info.max_price = -1;
+    info.min_price = 99999;
+    
+    
+    int total = PositionsTotal();
+
+    for(int i = 0; i < total; i++)
+    {
+        if(PositionGetTicket(i)) 
+        {
+            long   type       = PositionGetInteger(POSITION_TYPE);
+            double volume = PositionGetDouble(POSITION_VOLUME);
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            long magicNumber = PositionGetInteger(POSITION_MAGIC);
+
+            if(type == POSITION_TYPE_BUY && magicNumber == MagicBuy ){
+               // count
+               info.count++; 
+               
+               // min
+               if (price < info.min_price){
+                  info.min_price = price;
+               }
+               // max
+               if (price > info.max_price){
+                  info.max_price = price;
+               }
+            }
+        }
+    }
+    
+    return info;
+}
+
+void CheckAndClose_Buy(){
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   BuyInfoV7 buy = GetBuyInfoV7();
+   double d = buy.max_price - buy.min_price;
+   
+   
+   
+   if(buy.count == 1){
+      my_tp_buy = 2 ;
+   }
+   else if(buy.count == 2){
+      my_tp_buy = 3 ;
+   }else if(buy.count == 3){
+      my_tp_buy = 4 ;
+   }
+   else if(buy.count == 4){
+      my_tp_buy = 5 ;
+   }else if(buy.count < 5 ){ // 60%
+      my_tp_buy = d*0.6 ;
+   }else if(buy.count < 10){ // 50%
+      my_tp_buy = d*0.5 ;
+   }else if(buy.count < 20){ // 40%
+      my_tp_buy = d*0.4 ;
+   }
+   else{ // 38%
+      my_tp_buy = d*0.38 ;
+   }
+   
+   Print("---- my_tp_buy: ",my_tp_buy);
+   
+   if(bid - buy.min_price > my_tp_buy){
+      Print("---- bid - buy.min_price: ",bid - buy.min_price);
+      CloseBuy();
+   }
+   Print("----------------");
+}
+
+void CloseBuy(){
+   // loop for close All 
+   for(int i = PositionsTotal() - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      if(PositionGetTicket(i)) {
+         if(PositionGetInteger(POSITION_MAGIC) == MagicBuy && PositionGetString(POSITION_SYMBOL) == _Symbol) {
+            tradeBuy.PositionClose(ticket);
+         }
+      }
+   }
+}
+
+
+bool IsSellTime()
+{
+   datetime now = TimeCurrent();   // server time
+   //Print("------------------- ",now);
+   MqlDateTime t;
+   TimeToStruct(now, t);
+
+   int minutesNow   = t.hour * 60 + t.min;
+   int minutesStart = 1 * 60 + 10;    // 01:10
+   int minutesEnd   = 21 * 60 + 00 ;   // 21:00
+
+   return (minutesNow >= minutesStart && minutesNow <= minutesEnd);
+}
+
+
+
+
+//+------------------------------------------------------------------+
+void Run_SellV2_Magic(){
+   string symbol = _Symbol;
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   SellInfoV2 sell = GetSellInfoV2();
+   if (sell.max_price != -1){
+      double now_lot_size = sell.max_lot_size;
+      double new_lot_size = now_lot_size * 2;
+      
+      if(new_lot_size < 0.08 ){ my_gap_sell=2; my_tp_sell=3; }
+      else if(new_lot_size==0.08 || new_lot_size==0.16){ my_gap_sell=5; my_tp_sell=7; }
+      else if(new_lot_size==0.32 || new_lot_size==0.64){ my_gap_sell=10; my_tp_sell=13; }
+      else if(new_lot_size==1.28 || new_lot_size==2.56){ my_gap_sell=12; my_tp_sell=15; }
+      else if(new_lot_size==5.12 || new_lot_size==10.24){ my_gap_sell=14; my_tp_sell=18; }
+      else if(new_lot_size==20.48 || new_lot_size==40.96){ my_gap_sell=16; my_tp_sell=20; }
+      else if(new_lot_size==81.92 || new_lot_size==163.84){ my_gap_sell=18; my_tp_sell=22; }
+      
+      double target_sell = sell.max_price + my_gap_sell;
+      
+      
+      if(new_lot_size <= 200){
+         if( bid >= target_sell ){
+            tradeSell.Sell(new_lot_size, symbol, bid, 0, 0, "Sell");
+            Sleep(2000);
+            ModifySellTP();
+         }
+      }
+   }else{
+      if(IsSellTime()){
+         tradeSell.Sell(0.01, symbol, bid, 0, ask - 2, "Sell");
+      }
+      
+   }
+
+}
+
+struct SellInfoV2
+{
+   int count;
+   double max_price;
+   double max_lot_size;
+};
+
+SellInfoV2 GetSellInfoV2()
+{
+    SellInfoV2 info;
+    info.count = 0;
+    info.max_price = -1;
+    info.max_lot_size = 0;
+    
+    
+    int total = PositionsTotal();
+
+    for(int i = 0; i < total; i++)
+    {
+        if(PositionGetTicket(i)) 
+        {
+            long   type       = PositionGetInteger(POSITION_TYPE);
+            double volume = PositionGetDouble(POSITION_VOLUME);
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            long magicNumber = PositionGetInteger(POSITION_MAGIC);
+
+            if(type == POSITION_TYPE_SELL && magicNumber == MagicSell ){
+               info.count++; 
+               if (price > info.max_price){
+                  info.max_price = price;
+               }
+               if (volume > info.max_lot_size){
+                  info.max_lot_size = volume;
+               }
+            }
+        }
+    }
+    return info;
+}
+
+void ModifySellTP()
+{
+   Print("----- Start ModifySellTP --- ");
+   SellInfoV2 sell = GetSellInfoV2();
+   int count = sell.count;
+   double newTP = sell.max_price - my_tp_sell;
+   int finish = 0;
+   int total = PositionsTotal(); // ????? positions ??????????
+
+      Print("----- Start Loop --- ");
+      for(int i = 0; i < total; i++)
+      {
+         if(PositionGetTicket(i)) // ????? position ??? index
+         {
+            long   type       = PositionGetInteger(POSITION_TYPE);
+            long magicNumber = PositionGetInteger(POSITION_MAGIC);
+            double volume = PositionGetDouble(POSITION_VOLUME);
+            
+            if(type == POSITION_TYPE_SELL && magicNumber == MagicSell)
+            {
+               ulong  ticket = PositionGetInteger(POSITION_TICKET);
+               bool result = tradeSell.PositionModify(ticket, 0, newTP);
+               
+               if(result == false){
+                  Print("---- ",volume," error ---");
+               }else{
+                  Print("---- ",volume," finish ---");
+                  finish++;
+               }
+            }
+         }
+      }
+      Print("--- count : ", count, " --- finish --- ", finish);
+   Print("----- End ModifySellTP --- ");
+}
+
