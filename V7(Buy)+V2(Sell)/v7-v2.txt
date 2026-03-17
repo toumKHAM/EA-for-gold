@@ -46,7 +46,7 @@ void Run_buyV7(){
    if(buy.min_price != 99999){
       double target_buy = buy.min_price - my_gap_buy;
       double new_lot_size = (buy.count+1)*0.01;
-      if(new_lot_size <= 0.8){
+      if(new_lot_size <= 0.6){
          if( ask <= target_buy ){
             tradeBuy.Buy(new_lot_size, symbol, ask, 0, 0, "Buy");
             
