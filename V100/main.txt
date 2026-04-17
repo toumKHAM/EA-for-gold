@@ -1,0 +1,76 @@
+#include <Trade\Trade.mqh>
+CTrade trade;
+
+
+int OnInit()
+{
+   Print("---- EA-V100 start --- ", _Symbol);
+   return(INIT_SUCCEEDED);
+}
+
+void OnDeinit(const int reason)
+{
+
+   Print("---- EA-V100 close --- ");
+}
+
+void OnTick()
+{
+   if(NewCandle()==true && OrdersTotal()==0){
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      Print("-- New Candle -- ask: ",ask);
+      PlaceOrder();
+   }
+   
+   if(IsPositionOpen()==true){
+      DeletePendingOrders();
+   }
+   
+}
+
+bool NewCandle(){
+   static datetime last_time = 0;
+   datetime current_time = iTime(_Symbol, _Period, 0);
+   if(current_time != last_time)
+   {
+      last_time = current_time;
+      return true;
+   }
+   return false;
+}
+
+void PlaceOrder(){
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double target_buy_stop = ask + 1;
+   double target_sell_stop = ask - 1;
+   double lot_size = GetLotSize();
+   trade.BuyStop(lot_size, target_buy_stop, _Symbol, target_buy_stop - 1, 0, NULL); 
+   trade.SellStop(lot_size, target_sell_stop, _Symbol, target_sell_stop + 1, 0, NULL); 
+}
+
+double GetLotSize(){
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double raw_lot = balance * 0.0001;
+   double lot_size = NormalizeDouble(raw_lot, 2);
+   return lot_size;
+}
+
+bool IsPositionOpen()
+{
+   if(PositionsTotal() > 0) return true;
+   return false;
+}
+
+void DeletePendingOrders()
+{
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = OrderGetTicket(i);
+     
+      if(OrderSelect(ticket))
+      {
+         trade.OrderDelete(ticket);;
+      }
+   }
+}
+
