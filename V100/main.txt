@@ -16,10 +16,11 @@ void OnDeinit(const int reason)
 
 void OnTick()
 {
-   if(NewCandle()==true && OrdersTotal()==0){
+   if(NewCandle()==true && OrdersTotal()==0 && IsPositionOpen()==false){
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       Print("-- New Candle -- ask: ",ask);
       PlaceOrder();
+      //Sleep(2000);
    }
    
    if(IsPositionOpen()==true){
@@ -44,13 +45,13 @@ void PlaceOrder(){
    double target_buy_stop = ask + 1;
    double target_sell_stop = ask - 1;
    double lot_size = GetLotSize();
-   trade.BuyStop(lot_size, target_buy_stop, _Symbol, target_buy_stop - 1, 0, NULL); 
-   trade.SellStop(lot_size, target_sell_stop, _Symbol, target_sell_stop + 1, 0, NULL); 
+   trade.BuyStop(lot_size, target_buy_stop, _Symbol, target_buy_stop - 2, target_buy_stop+2, NULL); 
+   trade.SellStop(lot_size, target_sell_stop, _Symbol, target_sell_stop + 2, target_sell_stop-2, NULL); 
 }
 
 double GetLotSize(){
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   double raw_lot = balance * 0.0001;
+   double raw_lot = balance * 0.00005;
    double lot_size = NormalizeDouble(raw_lot, 2);
    return lot_size;
 }
@@ -74,3 +75,6 @@ void DeletePendingOrders()
    }
 }
 
+void SetBE(){
+
+}
