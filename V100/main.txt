@@ -16,17 +16,27 @@ void OnDeinit(const int reason)
 
 void OnTick()
 {
-   if(NewCandle()==true && OrdersTotal()==0 && IsPositionOpen()==false){
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      Print("-- New Candle -- ask: ",ask);
-      PlaceOrder();
-      //Sleep(2000);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   
+   
+   if(NewCandle()==true && PositionsTotal()==0 && OrdersTotal()==0 ){
+      double target_buy_stop = ask + 1;
+      double lot_size = GetLotSize();
+      trade.BuyStop(lot_size, target_buy_stop, _Symbol, target_buy_stop - 2.3, 0, NULL);
+      
+      double target_sell_stop = bid - 1;
+      trade.SellStop(lot_size, target_sell_stop, _Symbol, target_sell_stop + 2.3, 0, NULL); 
    }
    
-   if(IsPositionOpen()==true){
+   if(PositionsTotal()==1){
       DeletePendingOrders();
    }
    
+   if(PositionsTotal()==1){
+      SetBE();
+   }
 }
 
 bool NewCandle(){
@@ -40,26 +50,17 @@ bool NewCandle(){
    return false;
 }
 
-void PlaceOrder(){
-   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double target_buy_stop = ask + 1;
-   double target_sell_stop = ask - 1;
-   double lot_size = GetLotSize();
-   trade.BuyStop(lot_size, target_buy_stop, _Symbol, target_buy_stop - 2, target_buy_stop+2, NULL); 
-   trade.SellStop(lot_size, target_sell_stop, _Symbol, target_sell_stop + 2, target_sell_stop-2, NULL); 
-}
 
 double GetLotSize(){
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   double raw_lot = balance * 0.00005;
+   double raw_lot = balance * 0.00003;
    double lot_size = NormalizeDouble(raw_lot, 2);
+   if(lot_size > 100){
+      lot_size=100;
+   }else if(lot_size < 0.01){
+      lot_size=0.01;
+   }
    return lot_size;
-}
-
-bool IsPositionOpen()
-{
-   if(PositionsTotal() > 0) return true;
-   return false;
 }
 
 void DeletePendingOrders()
@@ -67,7 +68,6 @@ void DeletePendingOrders()
    for(int i = OrdersTotal() - 1; i >= 0; i--)
    {
       ulong ticket = OrderGetTicket(i);
-     
       if(OrderSelect(ticket))
       {
          trade.OrderDelete(ticket);;
@@ -75,6 +75,62 @@ void DeletePendingOrders()
    }
 }
 
-void SetBE(){
 
+void SetBE()
+{
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket)
+      {
+         // ກວດສອບ Magic Number ແລະ Symbol
+         if( PositionGetString(POSITION_SYMBOL) == _Symbol)
+         {
+            double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+            double currentSL = PositionGetDouble(POSITION_SL);
+            double curPrice  = PositionGetDouble(POSITION_PRICE_CURRENT);
+            ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+            
+            double profitInPoints = 0;
+            double newSL = 0;
+
+            if(type == POSITION_TYPE_BUY)
+            {
+               profitInPoints = curPrice - openPrice; // ກຳໄລຂອງໄມ້ Buy
+               
+               // ເງື່ອນໄຂ: ກຳໄລ >= 2, ໃຫ້ກັນທຶນ 1
+               // ຫຼັງຈາກນັ້ນກວດສອບທຸກໆ 0.5 (2.5 -> 2, 3.0 -> 2.5, ...)
+               if(profitInPoints >= 2)
+               {
+                  // ສູດຄຳນວນ: ຖ້າກຳໄລ 2.5, ຈະໄດ້ (Floor((2.5-2)/0.5) * 0.5) + 1 = 1.5 + 1 = 2.5? 
+                  // ເອົາແບບເຂົ້າໃຈງ່າຍ: ຖ້າກຳໄລ P, ໃຫ້ SL = openPrice + (P - 1.0) ໂດຍປັດລົງໃຫ້ລົງລັອກ 0.5
+                  double step = MathFloor((profitInPoints - 1) / 0.5) * 0.5;
+                  newSL = openPrice + 1 + step;
+
+                  // ອັບເດດ SL ຖ້າ SL ໃໝ່ ຢູ່ສູງກວ່າ SL ເກົ່າ
+                  if(newSL > currentSL || currentSL == 0)
+                  {
+                     trade.PositionModify(ticket, NormalizeDouble(newSL, _Digits), PositionGetDouble(POSITION_TP));
+                  }
+               }
+            }
+            else if(type == POSITION_TYPE_SELL)
+            {
+               profitInPoints = openPrice - curPrice; // ກຳໄລຂອງໄມ້ Sell
+               
+               if(profitInPoints >= 2)
+               {
+                  double step = MathFloor((profitInPoints - 1) / 0.5) * 0.5;
+                  newSL = openPrice - 1 - step;
+
+                  // ອັບເດດ SL ຖ້າ SL ໃໝ່ ຢູ່ຕ່ຳກວ່າ SL ເກົ່າ (ສຳລັບ Sell)
+                  if(newSL < currentSL || currentSL == 0)
+                  {
+                     trade.PositionModify(ticket, NormalizeDouble(newSL, _Digits), PositionGetDouble(POSITION_TP));
+                  }
+               }
+            }
+         }
+      }
+   }
 }
