@@ -20,14 +20,16 @@ void OnTick()
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
    
-   
-   if(NewCandle()==true && PositionsTotal()==0 && OrdersTotal()==0 ){
+   //NewCandle()==true &&
+   if( PositionsTotal()==0 && OrdersTotal()==0 ){
       double target_buy_stop = ask + 1;
       double lot_size = GetLotSize();
-      trade.BuyStop(lot_size, target_buy_stop, _Symbol, target_buy_stop - 2.3, 0, NULL);
+      trade.BuyStop(lot_size, target_buy_stop, _Symbol, target_buy_stop - 4, 0, NULL);
       
       double target_sell_stop = bid - 1;
-      trade.SellStop(lot_size, target_sell_stop, _Symbol, target_sell_stop + 2.3, 0, NULL); 
+      trade.SellStop(lot_size, target_sell_stop, _Symbol, target_sell_stop + 4, 0, NULL); 
+      
+      Print("--- Lot: ", GetTotalClosedLots());
    }
    
    if(PositionsTotal()==1){
@@ -35,7 +37,7 @@ void OnTick()
    }
    
    if(PositionsTotal()==1){
-      SetBE();
+      TrailingStepProfit();
    }
 }
 
@@ -75,15 +77,13 @@ void DeletePendingOrders()
    }
 }
 
-
-void SetBE()
+void TrailingStepProfit()
 {
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket)
       {
-         // ກວດສອບ Magic Number ແລະ Symbol
          if( PositionGetString(POSITION_SYMBOL) == _Symbol)
          {
             double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -91,23 +91,16 @@ void SetBE()
             double curPrice  = PositionGetDouble(POSITION_PRICE_CURRENT);
             ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
             
-            double profitInPoints = 0;
+            double profit = 0;
             double newSL = 0;
 
             if(type == POSITION_TYPE_BUY)
             {
-               profitInPoints = curPrice - openPrice; // ກຳໄລຂອງໄມ້ Buy
-               
-               // ເງື່ອນໄຂ: ກຳໄລ >= 2, ໃຫ້ກັນທຶນ 1
-               // ຫຼັງຈາກນັ້ນກວດສອບທຸກໆ 0.5 (2.5 -> 2, 3.0 -> 2.5, ...)
-               if(profitInPoints >= 2)
+               profit = curPrice - openPrice;
+               if(profit >= 1.0)
                {
-                  // ສູດຄຳນວນ: ຖ້າກຳໄລ 2.5, ຈະໄດ້ (Floor((2.5-2)/0.5) * 0.5) + 1 = 1.5 + 1 = 2.5? 
-                  // ເອົາແບບເຂົ້າໃຈງ່າຍ: ຖ້າກຳໄລ P, ໃຫ້ SL = openPrice + (P - 1.0) ໂດຍປັດລົງໃຫ້ລົງລັອກ 0.5
-                  double step = MathFloor((profitInPoints - 1) / 0.5) * 0.5;
-                  newSL = openPrice + 1 + step;
-
-                  // ອັບເດດ SL ຖ້າ SL ໃໝ່ ຢູ່ສູງກວ່າ SL ເກົ່າ
+                  double step = MathFloor((profit - 1.0) / 0.1) * 0.1;
+                  newSL = openPrice + step;
                   if(newSL > currentSL || currentSL == 0)
                   {
                      trade.PositionModify(ticket, NormalizeDouble(newSL, _Digits), PositionGetDouble(POSITION_TP));
@@ -116,14 +109,12 @@ void SetBE()
             }
             else if(type == POSITION_TYPE_SELL)
             {
-               profitInPoints = openPrice - curPrice; // ກຳໄລຂອງໄມ້ Sell
+               profit = openPrice - curPrice;
                
-               if(profitInPoints >= 2)
+               if(profit >= 1.0)
                {
-                  double step = MathFloor((profitInPoints - 1) / 0.5) * 0.5;
-                  newSL = openPrice - 1 - step;
-
-                  // ອັບເດດ SL ຖ້າ SL ໃໝ່ ຢູ່ຕ່ຳກວ່າ SL ເກົ່າ (ສຳລັບ Sell)
+                  double step = MathFloor((profit - 1.0) / 0.1) * 0.1;
+                  newSL = openPrice - step;
                   if(newSL < currentSL || currentSL == 0)
                   {
                      trade.PositionModify(ticket, NormalizeDouble(newSL, _Digits), PositionGetDouble(POSITION_TP));
@@ -133,4 +124,30 @@ void SetBE()
          }
       }
    }
+}
+
+double GetTotalClosedLots()
+{
+   double totalLots = 0;
+   if(HistorySelect(0, TimeCurrent()))
+   {
+      int totalDeals = HistoryDealsTotal();
+      for(int i = 0; i < totalDeals; i++)
+      {
+         ulong ticket = HistoryDealGetTicket(i);
+
+         if(HistoryDealGetString(ticket, DEAL_SYMBOL) == _Symbol)
+         {
+            long entryType = HistoryDealGetInteger(ticket, DEAL_ENTRY);
+            
+            if(entryType == DEAL_ENTRY_OUT || entryType == DEAL_ENTRY_OUT_BY)
+            {
+               double volume = HistoryDealGetDouble(ticket, DEAL_VOLUME);
+               totalLots += volume;
+            }
+         }
+      }
+   }
+   
+   return totalLots;
 }
