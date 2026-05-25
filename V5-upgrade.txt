@@ -9,14 +9,27 @@ CTrade trade;
 
 //--- Input Parameters
 input group "--- EA Settings ---"
-double   InpTargetProfit   = 0.2;     // ເປົ້າໝາຍກຳໄລລວມ (USD) เพื่อ Close All
-double   InpGapBuy         = 1;      // ໄລຍະຫ່າງ Buy Stop (ເປັນລາຄາ ຫຼື 20 pips/points ປັບຕາມຄູ່ເງິນ)
-double   InpGapSell        = 1;      // ໄລຍະຫ່າງ Sell Stop
+double   InpTargetProfit   = 30;     // ເປົ້າໝາຍກຳໄລລວມ (USD) เพื่อ Close All
+double   InpGapBuy         = 1.5;      // ໄລຍະຫ່າງ Buy Stop (ເປັນລາຄາ ຫຼື 20 pips/points ປັບຕາມຄູ່ເງິນ)
+double   InpGapSell        = 1.5;      // ໄລຍະຫ່າງ Sell Stop
 ulong    InpMagicNumber    = 123456;   // Magic Number ຂອງ EA
 
 //--- Global Variables
 bool isFirstRun = true;
 
+
+double lotPattern[] = {
+               0.01, 0.02, 
+               0.03, 0.04, 0.05, 
+               0.07, 0.08, 0.09,  
+               0.12, 0.13, 0.14,  
+               0.18, 0.19, 0.20, 
+               0.25, 0.26, 0.26,
+               0.33, 0.34, 0.35,
+               0.42, 0.43, 0.44,
+               0.52, 0.53, 0.54,
+               0.63, 0.64, 0.65,
+               0.75, 0.76, 0.77         };
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -40,11 +53,19 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      
+      
    //--- Step 4: ກວດສອບກຳໄລລວມ > 50 USD ແລ້ວ Close All
    if(GetTotalProfit() >= InpTargetProfit)
    {
       Print("ກຳໄລຮອດເປົ້າໝາຍແລ້ວ: ", GetTotalProfit(), " USD. ກຳລັງປິດອໍເດີ້ທັງໝົດ...");
       CloseAllOrders();
+      Sleep(10000);
+      if(PositionsTotal()>0){
+         CloseAllOrders();
+      }
       isFirstRun = true; // ຫຼັງຈາກປິດໝົດແລ້ວ ໃຫ້ເລີ່ມ Step 1 ໃໝ່
       return; 
    }
@@ -52,8 +73,7 @@ void OnTick()
    //--- ຖ້າປິດອໍເດີ້ໝົດແລ້ວ ຫຼື ເປັນການລັນເທື່ອທຳອິດ
    if(isFirstRun && CountActivePositions() == 0)
    {
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      
       
       if(ask == 0 || bid == 0) return;
 
@@ -63,42 +83,25 @@ void OnTick()
             trade.Sell(0.01, _Symbol, bid, 0, 0, "Initial Sell"))
          {
             Print("ເລີ່ມຕົ້ນລະບົບ: ອອກໄມ້ Buy 0.01 ແລະ Sell 0.01 ສຳເລັດ.");
-            
-            //--- ຕັ້ງຄ່າລ໋ອດຕາມເງື່ອນໄຂ (ເພີ່ມເທື່ອລະ 0.03 ທຸກໆ 3 ໄມ້ ຈົນຮອດ 0.22)
-            double lotPattern[] = {
-               0.01, 0.01, 
-               0.04, 0.04, 0.04, 
-               0.08, 0.08, 0.08,  
-               0.13, 0.13, 0.13,  
-               0.19, 0.19, 0.19, 
-               0.26, 0.26, 0.26,
-               0.34, 0.34, 0.34,
-               0.43, 0.43, 0.43,
-               0.53, 0.53, 0.53,
-               0.64, 0.64, 0.64,
-               0.76, 0.76, 0.76         };
-            int totalPendingOrders = ArraySize(lotPattern);
-   
-            //--- Step 2: ຕັ້ງ Buy Stop ຂຶ້ນໄປເລື້ອຍໆ
-            double nextBuyPrice = ask;
-            for(int i = 0; i < totalPendingOrders; i++)
-            {
-               nextBuyPrice += InpGapBuy;
-               trade.BuyStop(lotPattern[i], nextBuyPrice, _Symbol, 0, 0, ORDER_TIME_GTC, 0, "Grid BuyStop");
-            }
-   
-            //--- Step 3: ຕັ້ງ Sell Stop ລົງໄປເລື້ອຍໆ
-            double nextSellPrice = bid;
-            for(int i = 0; i < totalPendingOrders; i++)
-            {
-               nextSellPrice -= InpGapSell;
-               trade.SellStop(lotPattern[i], nextSellPrice, _Symbol, 0, 0, ORDER_TIME_GTC, 0, "Grid SellStop");
-            }
-            
             isFirstRun = false; // ປ່ຽນສະຖານະເພື່ອບໍ່ໃຫ້ມັນອອກຊ້ຳອີກ
          }
       }
    }
+   
+   BuyInfoV5 buy = GetBuyInfoV5();
+   SellInfoV5 sell = GetSellInfoV5();
+   if(buy.count > 0 || sell.count>0){
+      double target_buy = buy.max_price + InpGapBuy;
+      if(ask > target_buy){
+         trade.Buy(lotPattern[buy.count-1], _Symbol, ask, 0, 0, " Buy");
+      }
+      
+      double target_sell = sell.min_price - InpGapSell;
+      if(bid < target_sell){
+         trade.Sell(lotPattern[sell.count-1], _Symbol, bid, 0, 0, " Sell");
+      }
+   }
+   
 }
 
 //+------------------------------------------------------------------+
@@ -120,6 +123,7 @@ double GetTotalProfit()
          }
       }
    }
+   Print("total_profit: ",total_profit);
    return total_profit;
 }
 
@@ -159,6 +163,7 @@ void CloseAllOrders()
       }
    }
    
+   
    // 2. ລຶບ Pending Orders (Buy Stop / Sell Stop) ທັງໝົດກ່ອນ
    int total_orders = OrdersTotal();
    for(int i = total_orders - 1; i >= 0; i--)
@@ -173,9 +178,7 @@ void CloseAllOrders()
       }
    }
    
-   if(PositionsTotal() > 0){
-      CloseAllOrders();
-   }
+   
 
    
 }
@@ -192,4 +195,78 @@ bool IsTradeTime()
    int minutesEnd   = 22 * 60 + 30 ;   // 22:30
 
    return (minutesNow >= minutesStart && minutesNow <= minutesEnd);
+}
+
+
+struct BuyInfoV5
+{
+   int count;
+   double max_price;
+};
+
+BuyInfoV5 GetBuyInfoV5()
+{
+    BuyInfoV5 info;
+    info.count = 0;
+    info.max_price = -1;
+    
+    int total = PositionsTotal();
+    for(int i = 0; i < total; i++)
+    {
+        if(PositionGetTicket(i)) 
+        {
+            long   type       = PositionGetInteger(POSITION_TYPE);
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            long magicNumber = PositionGetInteger(POSITION_MAGIC);
+
+            if(type == POSITION_TYPE_BUY && magicNumber == InpMagicNumber ){
+               // count
+               info.count++; 
+               
+               // min
+               if (price > info.max_price){
+                  info.max_price = price;
+               }
+            }
+        }
+    }
+    
+    return info;
+}
+
+
+struct SellInfoV5
+{
+   int count;
+   double min_price;
+};
+
+SellInfoV5 GetSellInfoV5()
+{
+    SellInfoV5 info;
+    info.count = 0;
+    info.min_price = 99999;
+    
+    int total = PositionsTotal();
+
+    for(int i = 0; i < total; i++)
+    {
+        if(PositionGetTicket(i)) 
+        {
+            long   type       = PositionGetInteger(POSITION_TYPE);
+            double price = PositionGetDouble(POSITION_PRICE_OPEN);
+            long magicNumber = PositionGetInteger(POSITION_MAGIC);
+
+            if(type == POSITION_TYPE_SELL && magicNumber == InpMagicNumber ){
+               // count
+               info.count++; 
+               
+               // max
+               if (price < info.min_price){
+                  info.min_price = price;
+               }
+            }
+        }
+    }
+    return info;
 }
